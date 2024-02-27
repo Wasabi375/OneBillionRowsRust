@@ -1,16 +1,23 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
-    fs::File,
+    fs::{create_dir_all, File},
     io::{BufWriter, Write},
     path::PathBuf,
 };
 
 use anyhow::{Context, Result};
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use console::Term;
 use rand::{distributions::Alphanumeric, seq::SliceRandom, Rng, SeedableRng};
 use rand_distr::{Binomial, Distribution};
+
+#[derive(Debug, ValueEnum, Clone, Copy)]
+enum ArgPreset {
+    Full,
+    Cities400,
+    Test,
+}
 
 #[derive(Debug, Parser)]
 struct Args {
@@ -58,10 +65,89 @@ struct Args {
     /// This can be used to generate test data to verify an implementation.
     #[arg(short, long)]
     result_output: Option<PathBuf>,
+
+    /// A number of predefined arguments for easy data generation
+    ///
+    /// This will override all arguments except for the output files.
+    /// It will however change the default for the output files.
+    #[arg(short, long, value_enum)]
+    preset: Option<ArgPreset>,
+}
+
+impl ArgPreset {
+    fn output(&self) -> PathBuf {
+        PathBuf::from(match self {
+            ArgPreset::Full => "data/all_cities.txt",
+            ArgPreset::Cities400 => "data/citeis_400.txt",
+            ArgPreset::Test => "data/test.txt",
+        })
+    }
+
+    fn result_output(&self) -> PathBuf {
+        PathBuf::from(match self {
+            ArgPreset::Full => "data/all_cities_res.txt",
+            ArgPreset::Cities400 => "data/citeis_400_res.txt",
+            ArgPreset::Test => "data/test_res.txt",
+        })
+    }
+
+    fn city_count(&self) -> usize {
+        match self {
+            ArgPreset::Full => 10_000,
+            ArgPreset::Cities400 => 400,
+            ArgPreset::Test => 10,
+        }
+    }
+
+    fn city_len(&self) -> usize {
+        5
+    }
+
+    fn line_count(&self) -> usize {
+        match self {
+            ArgPreset::Full => 1_000_000_000,
+            ArgPreset::Cities400 => 1_000_000_000,
+            ArgPreset::Test => 1_000,
+        }
+    }
+
+    fn min_value(&self) -> i32 {
+        -99
+    }
+
+    fn max_value(&self) -> i32 {
+        99
+    }
+
+    fn fractional_digit(&self) -> u8 {
+        1
+    }
 }
 
 fn main() -> Result<()> {
-    let args = Args::parse();
+    let mut args = Args::parse();
+
+    match args.preset {
+        Some(preset) => {
+            args.output
+                .get_or_insert(preset.output())
+                .parent()
+                .map(|parent| create_dir_all(parent).context("Could not create output parent dir"));
+
+            args.result_output
+                .get_or_insert(preset.result_output())
+                .parent()
+                .map(|parent| create_dir_all(parent).context("Could not create output parent dir"));
+
+            args.city_count = preset.city_count();
+            args.city_len = preset.city_len();
+            args.line_count = preset.line_count();
+            args.min_value = preset.min_value();
+            args.max_value = preset.max_value();
+            args.fractional_digit = preset.fractional_digit();
+        }
+        None => {}
+    }
 
     let mut rng = rand::rngs::StdRng::from_entropy();
     println!("generating cities ...");
