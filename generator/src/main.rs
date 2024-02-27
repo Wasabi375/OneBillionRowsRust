@@ -1,0 +1,271 @@
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Display,
+    fs::File,
+    io::{BufWriter, Write},
+    path::PathBuf,
+};
+
+use anyhow::{Context, Result};
+use clap::Parser;
+use console::Term;
+use rand::{distributions::Alphanumeric, seq::SliceRandom, Rng, SeedableRng};
+
+#[derive(Debug, Parser)]
+struct Args {
+    /// The number of lines to generate
+    #[arg(short, long, default_value_t = 1_000_000_000)]
+    line_count: usize,
+
+    /// The number of cities to generate data for
+    ///
+    /// It is not guaranteed that all cities are used.
+    /// Each row uses a random city, therefor there is a chance
+    /// especially for small line counts that now all cities are used.
+    #[arg(short, long, default_value_t = 10_000)]
+    city_count: usize,
+
+    /// The max length of the gnerated city names
+    #[arg(short, long, default_value_t = 50)]
+    city_len: usize,
+
+    /// The highest integer value that is generated (exclusive).
+    /// This ignores the fractional digits. So a max_value of 99 with 1 fractional
+    /// digit can generate a true max value of 99.9
+    #[arg(long = "max", default_value_t = 99)]
+    max_value: i32,
+
+    /// The lowest integer value that is generated (exclusive)
+    /// This ignores the fractional digits. So a min_value of -99 with 1 fractional
+    /// digit can generate a true min value of -99.9
+    #[arg(long = "min", default_value_t = -99)]
+    min_value: i32,
+
+    /// Number of fractional digits in the generated values
+    #[arg(short, long, default_value_t = 1)]
+    fractional_digit: u8,
+
+    /// The output filename. Default is data.txt
+    #[arg(short, long)]
+    output: Option<PathBuf>,
+
+    /// The output filename for the expected result of the 1 Billion Row challenge
+    /// given the data created.
+    ///
+    /// This can be used to generate test data to verify an implementation.
+    #[arg(short, long)]
+    result_output: Option<PathBuf>,
+}
+
+fn main() -> Result<()> {
+    let args = Args::parse();
+
+    let mut rng = rand::rngs::StdRng::from_entropy();
+    println!("generating cities ...");
+    let cities = generate_cities(args.city_count, args.city_len, &mut rng);
+
+    let generator = Generator::new(
+        &cities,
+        args.min_value,
+        args.max_value,
+        args.fractional_digit,
+        rng,
+    );
+
+    let file = File::create(args.output.unwrap_or_else(|| PathBuf::from("data.txt")))
+        .context("failed to create output file")?;
+    let mut writer = BufWriter::new(file);
+
+    let mut results = if args.result_output.is_some() {
+        Some(HashMap::<String, CityResult>::with_capacity(
+            args.city_count,
+        ))
+    } else {
+        None
+    };
+    println!("generating rows...");
+
+    let term = Term::stdout();
+    for (i, row) in generator.take(args.line_count).enumerate() {
+        if i % 10_000 == 0 && args.line_count > 10_000_000 {
+            let _ = term.clear_last_lines(1);
+            println!("generating rows {}/{}", i, args.line_count);
+        }
+
+        if let Some(results) = results.as_mut() {
+            if let Some(old) = results.get_mut(row.city) {
+                let value = row.value();
+
+                old.count += 1;
+                old.total += value;
+
+                if old.min > value {
+                    old.min = value;
+                }
+                if old.max < value {
+                    old.max = value
+                }
+            } else {
+                results.entry(row.city.to_owned()).or_insert_with(|| {
+                    let value = row.value();
+                    CityResult {
+                        name: row.city.to_owned(),
+                        count: 1,
+                        total: value,
+                        min: value,
+                        max: value,
+                    }
+                });
+            }
+        }
+
+        writeln!(&mut writer, "{row}").context("failed to write data")?;
+    }
+    drop(writer);
+
+    if let Some(result_file) = args.result_output {
+        println!("calculating result data");
+        let file = File::create(result_file).context("failed to create result output fiel")?;
+        let mut result_file = BufWriter::new(file);
+        write!(result_file, "{{").context("failed to write result file")?;
+
+        let results = results.unwrap();
+
+        let mut sorted = cities.into_vec();
+        sorted.sort_unstable();
+        let mut first = true;
+        for city in sorted.iter().filter_map(|name| results.get(name.as_str())) {
+            if !first {
+                write!(result_file, ", ").context("failed to write result file")?;
+            } else {
+                first = false;
+            }
+            write!(
+                result_file,
+                "{}={:.4$}/{:.4$}/{:.4$}",
+                city.name,
+                city.min,
+                city.total / city.count as f32,
+                city.max,
+                args.fractional_digit as usize
+            )
+            .context("failed to write result file")?;
+        }
+        write!(result_file, "}}").context("failed to write result file")?;
+    }
+
+    println!("done");
+    Ok(())
+}
+
+#[derive(Debug)]
+struct CityResult {
+    name: String,
+    count: usize,
+    total: f32,
+    min: f32,
+    max: f32,
+}
+
+fn generate_citiy<R: Rng>(city_len: usize, rng: &mut R) -> String {
+    let len = rng.gen_range(0..city_len);
+    let result: String = rng
+        .sample_iter(Alphanumeric)
+        .map(char::from)
+        .take(len)
+        .collect();
+
+    assert!(result.bytes().len() <= 100);
+    result
+}
+
+fn generate_cities<R: Rng>(count: usize, city_len: usize, rng: &mut R) -> Box<[String]> {
+    let mut cities = HashSet::with_capacity(count);
+
+    while cities.len() != count {
+        cities.insert(generate_citiy(city_len, rng));
+    }
+
+    let mut result = Vec::with_capacity(count);
+
+    for city in cities.into_iter() {
+        result.push(city);
+    }
+
+    result.into()
+}
+
+struct Generator<'a, R> {
+    cities: &'a [String],
+    min: i32,
+    max: i32,
+    fraction_max: usize,
+    rng: R,
+}
+
+impl<'a, R> Generator<'a, R> {
+    fn new(cities: &'a [String], min: i32, max: i32, fraction_digits: u8, rng: R) -> Self {
+        let fraction_max = 10usize.pow(fraction_digits.into()) - 1;
+
+        Self {
+            cities,
+            min,
+            max,
+            fraction_max,
+            rng,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct Row<'a> {
+    city: &'a str,
+    int_value: i32,
+    fraction: Option<u32>,
+}
+
+impl Display for Row<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(fract_value) = self.fraction {
+            write!(f, "{};{}.{}", self.city, self.int_value, fract_value)
+        } else {
+            write!(f, "{};{}", self.city, self.int_value)
+        }
+    }
+}
+
+impl Row<'_> {
+    fn value(&self) -> f32 {
+        if let Some(fraction) = self.fraction {
+            // TODO is this the best I can come up with
+            format!("{}.{}", self.int_value, fraction).parse().unwrap()
+        } else {
+            self.int_value as f32
+        }
+    }
+}
+
+impl<'a, R: Rng> Iterator for Generator<'a, R> {
+    type Item = Row<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let city = self.cities.choose(&mut self.rng)?;
+
+        let int_value = self.rng.gen_range(self.min..=self.max);
+
+        if self.fraction_max > 0 {
+            let fract_value = self.rng.gen_range(0..=self.fraction_max) as u32;
+            Some(Row {
+                city,
+                int_value,
+                fraction: Some(fract_value),
+            })
+        } else {
+            Some(Row {
+                city,
+                int_value,
+                fraction: None,
+            })
+        }
+    }
+}
