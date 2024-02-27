@@ -28,7 +28,8 @@
               };
         })
       ];
-      supportedSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
+      # Only support linux. I don't want to figure out perf and dtrace for darwin
+      supportedSystems = [ "x86_64-linux" "aarch64-linux" ];
       forEachSupportedSystem = f: nixpkgs.lib.genAttrs supportedSystems (system: f {
         pkgs = import nixpkgs { inherit overlays system; };
       });
@@ -45,7 +46,13 @@
             cargo-watch
             rust-analyzer
             hyperfine
+            linuxPackages.perf
+            linuxPackages.systemtap
           ];
+
+          shellHook = ''
+          cargo install flamegraph
+          '';
         };
       });
     };

@@ -11,3 +11,7 @@ crossbeam = "0.8.4"
 
 [workspace] 
 members = ["generator"] 
+
+[profile.flame]
+inherits = "release"
+debug = true
