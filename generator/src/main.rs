@@ -10,6 +10,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use console::Term;
 use rand::{distributions::Alphanumeric, seq::SliceRandom, Rng, SeedableRng};
+use rand_distr::{Binomial, Distribution};
 
 #[derive(Debug, Parser)]
 struct Args {
@@ -25,8 +26,10 @@ struct Args {
     #[arg(short, long, default_value_t = 10_000)]
     city_count: usize,
 
-    /// The max length of the gnerated city names
-    #[arg(short, long, default_value_t = 50)]
+    /// The median length of the generated city names.
+    ///
+    /// The length follows a binomial distribution with a std-deviation of 0.3.
+    #[arg(short, long, default_value_t = 5)]
     city_len: usize,
 
     /// The highest integer value that is generated (exclusive).
@@ -167,12 +170,12 @@ struct CityResult {
     max: f32,
 }
 
-fn generate_citiy<R: Rng>(city_len: usize, rng: &mut R) -> String {
-    let len = rng.gen_range(0..city_len);
+fn generate_city<R: Rng>(distribution: Binomial, rng: &mut R) -> String {
+    let len = distribution.sample(rng).min(100);
     let result: String = rng
         .sample_iter(Alphanumeric)
         .map(char::from)
-        .take(len)
+        .take(len as usize)
         .collect();
 
     assert!(result.bytes().len() <= 100);
@@ -182,8 +185,10 @@ fn generate_citiy<R: Rng>(city_len: usize, rng: &mut R) -> String {
 fn generate_cities<R: Rng>(count: usize, city_len: usize, rng: &mut R) -> Box<[String]> {
     let mut cities = HashSet::with_capacity(count);
 
+    let name_len_dist = Binomial::new(city_len as u64, 0.3).unwrap();
+
     while cities.len() != count {
-        cities.insert(generate_citiy(city_len, rng));
+        cities.insert(generate_city(name_len_dist, rng));
     }
 
     let mut result = Vec::with_capacity(count);
