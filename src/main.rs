@@ -106,11 +106,7 @@ fn process_lines(chunks: Receiver<StrBuffer>) -> HashMap<String, CityEntry> {
             let mut parts = line.split(';');
             let city = parts.next().expect("Expected city name");
             let value = &parts.next().expect("Expected value");
-            let value: f32 = value.parse().expect(&format!(
-                "expected float value but got \"{}\" in line\n{}\n",
-                value,
-                line.replace("\n", "\\n")
-            ));
+            let value: f32 = value.parse().expect("expected float value");
 
             if !result.contains_key(city) {
                 result.insert(city.to_string(), CityEntry::default());
