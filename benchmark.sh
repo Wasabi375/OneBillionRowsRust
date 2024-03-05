@@ -9,4 +9,4 @@ while [ $# -gt 0 ]; do
 done
 command="${command} data/all_cities.txt"
 
-hyperfine --min-runs 5 "$command"
+hyperfine --warmup 1 --min-runs 5 "$command"
