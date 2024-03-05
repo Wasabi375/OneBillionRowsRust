@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     fs::File,
     io::{stdout, Read, Seek, Write},
     ops::Deref,
@@ -10,6 +9,7 @@ use std::{
 
 use clap::Parser;
 use crossbeam::channel::{bounded, Receiver, Sender};
+use hashbrown::HashMap;
 
 #[derive(Debug, Parser)]
 struct Args {
@@ -108,6 +108,10 @@ fn process_lines(chunks: Receiver<StrBuffer>) -> HashMap<String, CityEntry> {
             let value = &parts.next().expect("Expected value");
             let value: f32 = value.parse().expect("expected float value");
 
+            // TODO switch to hashbrown maps and use raw-entry api
+            // this crate is the implementation in the std-lib, but provides access to nightly
+            // features (without nightly) such as the raw entry api as well as the inline-more
+            // feature-flag that should improve performance but reduce compilation speed
             if !result.contains_key(city) {
                 result.insert(city.to_string(), CityEntry::default());
             }

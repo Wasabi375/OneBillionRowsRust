@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 clap = { version = "4.5.1", features = ["derive"] }
 crossbeam = "0.8.4"
+hashbrown = "0.14.3"
 
 [workspace] 
 members = ["generator"] 
