@@ -1,4 +1,4 @@
 #!/usr/bin/env sh
-cargo build --release --bin generator
+cargo build --release -p generator
 
 ./target/release/generator $@

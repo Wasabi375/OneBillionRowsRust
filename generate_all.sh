@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-cargo build --release --bin generator
+cargo build --release -p generator
 
 echo "generating full data set"
 ./target/release/generator -p full

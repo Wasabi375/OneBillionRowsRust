@@ -257,7 +257,7 @@ struct CityResult {
 }
 
 fn generate_city<R: Rng>(distribution: Binomial, rng: &mut R) -> String {
-    let len = distribution.sample(rng).min(100);
+    let len = distribution.sample(rng).min(100).max(1);
     let result: String = rng
         .sample_iter(Alphanumeric)
         .map(char::from)
